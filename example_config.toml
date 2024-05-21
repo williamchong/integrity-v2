@@ -34,3 +34,10 @@ w3 = "/usr/bin/w3"                   # https://web3.storage/docs/w3cli/
 [c2pa]
 private_key = "/path/to/c2pa/private.key"
 sign_cert = "/path/to/c2pa/cert.pem"
+
+[database]
+user = "user"
+password = "password"
+host = "postgres"
+port = "5432"
+database = "database"

@@ -38,6 +38,13 @@ type Config struct {
 		PrivateKey string `toml:"private_key"`
 		SignCert   string `toml:"sign_cert"`
 	} `toml:"c2pa"`
+	Database struct {
+		Host     string `toml:"host"`
+		Port     string `toml:"port"`
+		User     string `toml:"user"`
+		Password string `toml:"password"`
+		Database string `toml:"database"`
+	} `toml:"database"`
 }
 
 var conf *Config
