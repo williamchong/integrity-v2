@@ -7,30 +7,72 @@ import (
 	"path/filepath"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/starlinglab/integrity-v2/config"
 	"github.com/starlinglab/integrity-v2/database"
 )
 
 // scanSyncDirectory scans a path under the sync directory and returns a list of files
-func scanSyncDirectory(subPath string) ([]string, error) {
+func scanSyncDirectory(subPath string) (fileList []string, dirList []string, err error) {
 	scanRoot := config.GetConfig().FolderPreprocessor.SyncFolderRoot
 	if scanRoot == "" {
 		scanRoot = "."
 	}
 	scanPath := filepath.Join(scanRoot, subPath)
-	fileList := []string{}
-	err := filepath.Walk(scanPath, func(path string, info fs.FileInfo, err error) error {
+	fmt.Println("Scanning: " + scanPath)
+	err = filepath.Walk(scanPath, func(path string, info fs.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		if checkShouldIncludeFile(info) {
+		if info.IsDir() {
+			dirList = append(dirList, path)
+		} else if checkShouldIncludeFile(info) {
 			fileList = append(fileList, path)
 			fmt.Println("Found: " + path)
 			return nil
 		}
 		return nil
 	})
-	return fileList, err
+	return fileList, dirList, err
+}
+
+func watchLoop(w *fsnotify.Watcher, pgPool *pgxpool.Pool, dirPathToProject map[string]ProjectQueryResult) {
+	for {
+		select {
+		case event, ok := <-w.Events:
+			if !ok {
+				return
+			}
+			if event.Has(fsnotify.Create) || event.Has(fsnotify.Rename) {
+				filePath := event.Name
+				file, err := os.Open(filePath)
+				if err != nil {
+					// File may be moved away for fsnotify.Rename
+					continue
+				}
+				defer file.Close()
+				fileInfo, err := file.Stat()
+				if err != nil {
+					fmt.Println("error getting file info:", err)
+					continue
+				}
+				if checkShouldIncludeFile(fileInfo) {
+					project := dirPathToProject[filepath.Dir(filePath)]
+					cid, err := handleNewFile(pgPool, filePath, &project)
+					if err != nil {
+						fmt.Println(err)
+					} else {
+						fmt.Printf("File %s uploaded to webhook with CID %s\n", filePath, cid)
+					}
+				}
+			}
+		case err, ok := <-w.Errors:
+			if !ok {
+				return
+			}
+			fmt.Println("error:", err)
+		}
+	}
 }
 
 // Scan the sync directory and watch for file changes
@@ -45,17 +87,31 @@ func Run(args []string) error {
 		return err
 	}
 
-	// Scan whole sync directory
-	fileList, err := scanSyncDirectory("")
+	projects, err := queryAllProjects(pgPool)
 	if err != nil {
 		return err
 	}
-	for _, filePath := range fileList {
-		cid, err := handleNewFile(pgPool, filePath)
+
+	dirPathToProject := map[string]ProjectQueryResult{}
+	var dirPaths []string
+
+	for _, project := range projects {
+		projectPath := *project.ProjectPath
+		fileList, dirList, err := scanSyncDirectory(projectPath)
 		if err != nil {
 			fmt.Println(err)
-		} else {
-			fmt.Printf("File %s uploaded to webhook with CID %s\n", filePath, cid)
+		}
+		for _, filePath := range fileList {
+			cid, err := handleNewFile(pgPool, filePath, &project)
+			if err != nil {
+				fmt.Println(err)
+			} else {
+				fmt.Printf("File %s uploaded to webhook with CID %s\n", filePath, cid)
+			}
+		}
+		for _, dirPath := range dirList {
+			dirPaths = append(dirPaths, dirPath)
+			dirPathToProject[dirPath] = project
 		}
 	}
 
@@ -66,48 +122,14 @@ func Run(args []string) error {
 	}
 	defer watcher.Close()
 
-	go func() {
-		for {
-			select {
-			case event, ok := <-watcher.Events:
-				if !ok {
-					return
-				}
-				if event.Has(fsnotify.Create) || event.Has(fsnotify.Rename) {
-					filePath := event.Name
-					file, err := os.Open(filePath)
-					if err != nil {
-						// File may be moved away for fsnotify.Rename
-						continue
-					}
-					defer file.Close()
-					fileInfo, err := file.Stat()
-					if err != nil {
-						fmt.Println("error getting file info:", err)
-						continue
-					}
-					if checkShouldIncludeFile(fileInfo) {
-						cid, err := handleNewFile(pgPool, filePath)
-						if err != nil {
-							fmt.Println(err)
-						} else {
-							fmt.Printf("File %s uploaded to webhook with CID %s\n", filePath, cid)
-						}
-					}
-				}
-			case err, ok := <-watcher.Errors:
-				if !ok {
-					return
-				}
-				fmt.Println("error:", err)
-			}
-		}
-	}()
+	go watchLoop(watcher, pgPool, dirPathToProject)
 
-	scanRoot := config.GetConfig().FolderPreprocessor.SyncFolderRoot
-	err = watcher.Add(scanRoot)
-	if err != nil {
-		return err
+	for _, dirPath := range dirPaths {
+		err = watcher.Add(dirPath)
+		if err != nil {
+			return err
+		}
+		fmt.Println("Watching folder changes: " + dirPath)
 	}
 
 	// Block main goroutine forever.
