@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -57,6 +58,8 @@ func getFileMetadata(filePath string) (map[string]any, error) {
 		return nil, err
 	}
 
+	syncRoot := config.GetConfig().FolderPreprocessor.SyncFolderRoot
+
 	return map[string]any{
 		"sha256":        hex.EncodeToString(sha.Sum(nil)),
 		"md5":           hex.EncodeToString(md.Sum(nil)),
@@ -66,6 +69,7 @@ func getFileMetadata(filePath string) (map[string]any, error) {
 		"file_name":     fileInfo.Name(),
 		"last_modified": fileInfo.ModTime().Format(time.RFC3339),
 		"time_created":  fileInfo.ModTime().Format(time.RFC3339),
+		"asset_origin":  strings.TrimPrefix(filePath, syncRoot),
 	}, nil
 }
 
