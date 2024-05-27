@@ -8,8 +8,6 @@ import (
 	"mime/multipart"
 	"net/http"
 	urlpkg "net/url"
-	"os"
-	"path/filepath"
 
 	"github.com/starlinglab/integrity-v2/config"
 )
@@ -28,7 +26,7 @@ type PostGenericWebhookResponse struct {
 }
 
 // PostFileToWebHook posts a file and its metadata to the webhook server
-func PostFileToWebHook(filePath string, metadata map[string]any, opts PostGenericWebhookOpt) (*PostGenericWebhookResponse, error) {
+func PostFileToWebHook(file io.Reader, metadata map[string]any, opts PostGenericWebhookOpt) (*PostGenericWebhookResponse, error) {
 	sourcePath := opts.Source
 	if sourcePath == "" {
 		sourcePath = "generic"
@@ -55,13 +53,7 @@ func PostFileToWebHook(filePath string, metadata map[string]any, opts PostGeneri
 			pw.CloseWithError(err)
 			return
 		}
-		file, err := os.Open(filePath)
-		if err != nil {
-			pw.CloseWithError(err)
-			return
-		}
-		defer file.Close()
-		part, err := mp.CreateFormFile("file", filepath.Base(filePath))
+		part, err := mp.CreateFormFile("file", "")
 		if err != nil {
 			pw.CloseWithError(err)
 			return
