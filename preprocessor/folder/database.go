@@ -45,6 +45,7 @@ func initDbTableIfNotExists(connPool *pgxpool.Pool) error {
 	return nil
 }
 
+// ProjectQueryResult represents the result of a project metadata query
 type ProjectQueryResult struct {
 	ProjectId        *string
 	ProjectPath      *string
@@ -53,6 +54,7 @@ type ProjectQueryResult struct {
 	AuthorIdentifier *string
 }
 
+// queryAllProjects queries all project metadata from the database
 func queryAllProjects(connPool *pgxpool.Pool) ([]ProjectQueryResult, error) {
 	var result []ProjectQueryResult
 	rows, err := connPool.Query(

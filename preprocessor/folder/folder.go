@@ -36,6 +36,7 @@ func scanSyncDirectory(subPath string) (fileList []string, dirList []string, err
 	return fileList, dirList, err
 }
 
+// watchLoop watches for file changes in a directory and checks if it should be handled
 func watchLoop(w *fsnotify.Watcher, pgPool *pgxpool.Pool, dirPathToProject map[string]ProjectQueryResult) {
 	for {
 		select {
