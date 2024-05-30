@@ -1,6 +1,7 @@
 package preprocessor_folder
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -99,5 +100,8 @@ func setFileStatusError(connPool *pgxpool.Pool, filePath string, errorMessage st
 		time.Now().UTC(),
 		filePath,
 	)
+	if err != nil {
+		fmt.Println("error setting file status to error:", err)
+	}
 	return err
 }
