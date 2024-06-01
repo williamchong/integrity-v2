@@ -231,7 +231,7 @@ func handleNewFile(pgPool *pgxpool.Pool, filePath string, project *ProjectQueryR
 					return "", fmt.Errorf("error opening file %s in zip: %v", fileName, err)
 				}
 				defer file.Close()
-				resp, err := webhook.PostFileToWebHook(file, metadata, webhook.PostGenericWebhookOpt{})
+				resp, err := webhook.PostFileToWebHook(file, metadata, webhook.PostGenericWebhookOpt{Format: "cbor"})
 				if err != nil {
 					setFileStatusError(pgPool, filePath, err.Error())
 					return "", fmt.Errorf("error posting metadata for file %s: %v", filePath, err)

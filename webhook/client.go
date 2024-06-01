@@ -9,6 +9,7 @@ import (
 	"net/http"
 	urlpkg "net/url"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/starlinglab/integrity-v2/config"
 )
 
@@ -18,6 +19,7 @@ var client = &http.Client{}
 type PostGenericWebhookOpt struct {
 	Source    string // Source is the origin of the asset, which is used to determine the webhook endpoint
 	ProjectId string // ProjectId is the project specific ID where the asset belongs
+	Format    string // Format is "json" or "cbor"
 }
 
 type PostGenericWebhookResponse struct {
@@ -42,16 +44,39 @@ func PostFileToWebHook(file io.Reader, metadata map[string]any, opts PostGeneric
 	pr, pw := io.Pipe()
 	mp := multipart.NewWriter(pw)
 
+	metadataFormatType := "application/json"
+	if opts.Format == "cbor" {
+		metadataFormatType = "application/cbor"
+	}
+
 	go func() {
-		metadataString, err := json.Marshal(metadata)
+		err = mp.WriteField("metadata_format", string(metadataFormatType))
 		if err != nil {
 			pw.CloseWithError(err)
 			return
 		}
-		err = mp.WriteField("metadata", string(metadataString))
-		if err != nil {
-			pw.CloseWithError(err)
-			return
+		if metadataFormatType == "application/cbor" {
+			cborPart, err := mp.CreateFormFile("metadata", "")
+			if err != nil {
+				pw.CloseWithError(err)
+				return
+			}
+			err = cbor.NewEncoder(cborPart).Encode(metadata)
+			if err != nil {
+				pw.CloseWithError(err)
+				return
+			}
+		} else {
+			metadataString, err := json.Marshal(metadata)
+			if err != nil {
+				pw.CloseWithError(err)
+				return
+			}
+			err = mp.WriteField("metadata", string(metadataString))
+			if err != nil {
+				pw.CloseWithError(err)
+				return
+			}
 		}
 		part, err := mp.CreateFormFile("file", "")
 		if err != nil {
